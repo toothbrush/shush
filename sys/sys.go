@@ -2,19 +2,18 @@ package sys
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"os/exec"
 	"syscall"
 )
 
 // GetPayload - get input, from command-line (if present) or STDIN.
-//
 func GetPayload(args []string) (string, error) {
 	if len(args) >= 1 {
 		return args[0], nil
 	}
-	input, err := ioutil.ReadAll(os.Stdin)
+	input, err := io.ReadAll(os.Stdin)
 	if err != nil {
 		return "", err
 	}
@@ -22,14 +21,12 @@ func GetPayload(args []string) (string, error) {
 }
 
 // Abort - exit with status and message
-//
 func Abort(status int, message interface{}) {
 	fmt.Fprintf(os.Stderr, "ERROR: %s\n", message)
 	os.Exit(status)
 }
 
 // ExecCommand - exec an external command
-//
 func ExecCommand(args []string) {
 	if len(args) == 0 {
 		Abort(UsageError, "no command specified")

@@ -2,13 +2,14 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"strings"
 
 	"github.com/google/uuid"
 	"github.com/realestate-com-au/shush/kms"
 	"github.com/realestate-com-au/shush/sys"
-	"github.com/urfave/cli"
+	"github.com/urfave/cli/v2"
 )
 
 func main() {
@@ -19,31 +20,33 @@ func main() {
 	app.Usage = "KMS encryption and decryption"
 
 	app.Flags = []cli.Flag{
-		cli.StringSliceFlag{
-			Name:   "context, C",
-			Usage:  "encryption context",
-			EnvVar: "KMS_ENCRYPTION_CONTEXT",
+		&cli.StringSliceFlag{
+			Name:    "context",
+			Aliases: []string{"C"},
+			Usage:   "encryption context",
+			EnvVars: []string{"KMS_ENCRYPTION_CONTEXT"},
 		},
-		cli.StringFlag{
-			Name:   "region",
-			Usage:  "AWS region",
-			EnvVar: "AWS_DEFAULT_REGION",
+		&cli.StringFlag{
+			Name:    "region",
+			Usage:   "AWS region",
+			EnvVars: []string{"AWS_DEFAULT_REGION"},
 		},
 	}
 
-	app.Commands = []cli.Command{
+	app.Commands = []*cli.Command{
 		{
 			Name:  "encrypt",
 			Usage: "Encrypt with a KMS key",
 			Flags: []cli.Flag{
-				cli.BoolFlag{
-					Name:  "trim, t",
-					Usage: "If set, remove leading and trailing whitespace from plaintext",
+				&cli.BoolFlag{
+					Name:    "trim",
+					Aliases: []string{"t"},
+					Usage:   "If set, remove leading and trailing whitespace from plaintext",
 				},
 			},
-			Action: func(c *cli.Context) {
-				if len(c.Args()) == 0 {
-					sys.Abort(sys.UsageError, "no key specified")
+			Action: func(c *cli.Context) error {
+				if c.Args().Len() == 0 {
+					return fmt.Errorf("no encryption key specified")
 				}
 				key := c.Args().First()
 
@@ -54,13 +57,13 @@ func main() {
 				}
 
 				handle, err := kms.NewHandle(
-					c.GlobalString("region"),
-					c.GlobalStringSlice("context"),
+					c.String("region"),
+					c.StringSlice("context"),
 				)
 				if err != nil {
 					sys.Abort(sys.UsageError, err)
 				}
-				plaintext, err := sys.GetPayload(c.Args()[1:])
+				plaintext, err := sys.GetPayload(c.Args().Slice()[1:])
 				if err != nil {
 					sys.Abort(sys.UsageError, err)
 				}
@@ -78,20 +81,20 @@ func main() {
 			Name:  "decrypt",
 			Usage: "Decrypt KMS ciphertext",
 			Flags: []cli.Flag{
-				cli.BoolFlag{
+				&cli.BoolFlag{
 					Name:  "print-key",
 					Usage: "Print the key instead of the deciphered text",
 				},
 			},
-			Action: func(c *cli.Context) {
+			Action: func(c *cli.Context) error {
 				handle, err := kms.NewHandle(
-					c.GlobalString("region"),
-					c.GlobalStringSlice("context"),
+					c.String("region"),
+					c.StringSlice("context"),
 				)
 				if err != nil {
 					sys.Abort(sys.UsageError, err)
 				}
-				ciphertext, err := sys.GetPayload(c.Args())
+				ciphertext, err := sys.GetPayload(c.Args().Slice())
 				if err != nil {
 					sys.Abort(sys.UsageError, err)
 				}
@@ -110,14 +113,13 @@ func main() {
 			Name:  "exec",
 			Usage: "Execute a command",
 			Flags: []cli.Flag{
-				cli.StringFlag{
+				&cli.StringFlag{
 					Name:  "prefix",
 					Usage: "environment variable prefix",
 					Value: "KMS_ENCRYPTED_",
 				},
 			},
-			SkipArgReorder: true,
-			Action: func(c *cli.Context) {
+			Action: func(c *cli.Context) error {
 				encryptedVarPrefix := c.String("prefix")
 				foundEncrypted := false
 				for _, e := range os.Environ() {
@@ -128,11 +130,11 @@ func main() {
 				}
 				if foundEncrypted {
 					handle, err := kms.NewHandle(
-						c.GlobalString("region"),
-						c.GlobalStringSlice("context"),
+						c.String("region"),
+						c.StringSlice("context"),
 					)
 					if err != nil {
-						sys.Abort(sys.UsageError, err)
+						return fmt.Errorf("shush: incorrect usage: %w", err)
 					}
 					for _, e := range os.Environ() {
 						keyValuePair := strings.SplitN(e, "=", 2)
@@ -148,13 +150,15 @@ func main() {
 						}
 					}
 				}
-				sys.ExecCommand(c.Args())
+				sys.ExecCommand(c.Args().Slice())
 			},
 		},
 	}
 
-	app.Run(os.Args)
-
+	if err := app.Run(os.Args); err != nil {
+		sys.Abort(status int, message interface{})
+		log.Fatal(err)
+	}
 }
 
 func isValidUUID(u string) bool {
